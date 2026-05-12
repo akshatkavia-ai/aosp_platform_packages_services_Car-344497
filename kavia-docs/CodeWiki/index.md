@@ -8,4 +8,5 @@ This CodeWiki contains repository-derived documentation for the Android Automoti
 
 | Section | Description |
 | --- | --- |
+| [Architecture](./Architecture/index.md) | Architecture-focused documentation describing runtime structure, service boundaries, orchestration patterns, and lifecycle behavior in the current codebase. |
 | [Onboarding](./Onboarding/index.md) | Repository orientation and getting-started documentation for understanding the structure and major technical boundaries of the codebase. |
