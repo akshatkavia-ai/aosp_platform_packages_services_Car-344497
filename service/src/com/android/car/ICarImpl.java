@@ -21,7 +21,6 @@ import android.app.UiModeManager;
 import android.car.Car;
 import android.car.ICar;
 import android.car.cluster.renderer.IInstrumentClusterNavigation;
-import android.car.user.CarUserManagerHelper;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.hardware.automotive.vehicle.V2_0.IVehicle;
@@ -40,15 +39,12 @@ import com.android.car.hal.VehicleHal;
 import com.android.car.internal.FeatureConfiguration;
 import com.android.car.pm.CarPackageManagerService;
 import com.android.car.systeminterface.SystemInterface;
-import com.android.car.user.CarUserService;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.car.ICarServiceHelper;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 public class ICarImpl extends ICar.Stub {
 
@@ -61,33 +57,7 @@ public class ICarImpl extends ICar.Stub {
 
     private final SystemInterface mSystemInterface;
 
-    private final SystemActivityMonitoringService mSystemActivityMonitoringService;
-    private final CarPowerManagementService mCarPowerManagementService;
-    private final CarPackageManagerService mCarPackageManagerService;
-    private final CarInputService mCarInputService;
-    private final CarDrivingStateService mCarDrivingStateService;
-    private final CarUxRestrictionsManagerService mCarUXRestrictionsService;
-    private final CarAudioService mCarAudioService;
-    private final CarProjectionService mCarProjectionService;
-    private final CarPropertyService mCarPropertyService;
-    private final CarNightService mCarNightService;
-    private final AppFocusService mAppFocusService;
-    private final GarageModeService mGarageModeService;
-    private final InstrumentClusterService mInstrumentClusterService;
-    private final CarLocationService mCarLocationService;
-    private final SystemStateControllerService mSystemStateControllerService;
-    private final CarBluetoothService mCarBluetoothService;
-    private final PerUserCarServiceHelper mPerUserCarServiceHelper;
-    private final CarDiagnosticService mCarDiagnosticService;
-    private final CarStorageMonitoringService mCarStorageMonitoringService;
-    private final CarConfigurationService mCarConfigurationService;
-
-    private final CarUserManagerHelper mUserManagerHelper;
-    private CarUserService mCarUserService;
-    private VmsSubscriberService mVmsSubscriberService;
-    private VmsPublisherService mVmsPublisherService;
-
-    private final CarServiceBase[] mAllServices;
+    private final ICarImplServiceRegistry mServiceRegistry;
 
     private static final String TAG = "ICarImpl";
     private static final String VHAL_TIMING_TAG = "VehicleHalTiming";
@@ -109,98 +79,30 @@ public class ICarImpl extends ICar.Stub {
         mSystemInterface = systemInterface;
         mHal = new VehicleHal(vehicle);
         mVehicleInterfaceName = vehicleInterfaceName;
-        mSystemActivityMonitoringService = new SystemActivityMonitoringService(serviceContext);
-        mCarPowerManagementService = new CarPowerManagementService(mContext, mHal.getPowerHal(),
-                systemInterface);
-        mCarPropertyService = new CarPropertyService(serviceContext, mHal.getPropertyHal());
-        mCarDrivingStateService = new CarDrivingStateService(serviceContext, mCarPropertyService);
-        mCarUXRestrictionsService = new CarUxRestrictionsManagerService(serviceContext,
-                mCarDrivingStateService, mCarPropertyService);
-        mCarPackageManagerService = new CarPackageManagerService(serviceContext,
-                mCarUXRestrictionsService,
-                mSystemActivityMonitoringService);
-        mCarInputService = new CarInputService(serviceContext, mHal.getInputHal());
-        mCarProjectionService = new CarProjectionService(serviceContext, mCarInputService);
-        mGarageModeService = new GarageModeService(mContext, mCarPowerManagementService);
-        mCarLocationService = new CarLocationService(mContext, mCarPowerManagementService,
-                mCarPropertyService);
-        mAppFocusService = new AppFocusService(serviceContext, mSystemActivityMonitoringService);
-        mCarAudioService = new CarAudioService(serviceContext);
-        mCarNightService = new CarNightService(serviceContext, mCarPropertyService);
-        mInstrumentClusterService = new InstrumentClusterService(serviceContext,
-                mAppFocusService, mCarInputService);
-        mSystemStateControllerService = new SystemStateControllerService(serviceContext,
-                mCarPowerManagementService, mCarAudioService, this);
-        mPerUserCarServiceHelper = new PerUserCarServiceHelper(serviceContext);
-        mCarBluetoothService = new CarBluetoothService(serviceContext, mCarPropertyService,
-                mPerUserCarServiceHelper, mCarUXRestrictionsService);
-        mVmsSubscriberService = new VmsSubscriberService(serviceContext, mHal.getVmsHal());
-        mVmsPublisherService = new VmsPublisherService(serviceContext, mHal.getVmsHal());
-        mCarDiagnosticService = new CarDiagnosticService(serviceContext, mHal.getDiagnosticHal());
-        mCarStorageMonitoringService = new CarStorageMonitoringService(serviceContext,
-                systemInterface);
-        mCarConfigurationService =
-                new CarConfigurationService(serviceContext, new JsonReaderImpl());
-        mUserManagerHelper = new CarUserManagerHelper(serviceContext);
 
-        // Be careful with order. Service depending on other service should be inited later.
-        List<CarServiceBase> allServices = new ArrayList<>();
-        allServices.add(mSystemActivityMonitoringService);
-        allServices.add(mCarPowerManagementService);
-        allServices.add(mCarPropertyService);
-        allServices.add(mCarDrivingStateService);
-        allServices.add(mCarUXRestrictionsService);
-        allServices.add(mCarPackageManagerService);
-        allServices.add(mCarInputService);
-        allServices.add(mCarLocationService);
-        allServices.add(mGarageModeService);
-        allServices.add(mAppFocusService);
-        allServices.add(mCarAudioService);
-        allServices.add(mCarNightService);
-        allServices.add(mInstrumentClusterService);
-        allServices.add(mCarProjectionService);
-        allServices.add(mSystemStateControllerService);
-        allServices.add(mCarBluetoothService);
-        allServices.add(mCarDiagnosticService);
-        allServices.add(mPerUserCarServiceHelper);
-        allServices.add(mCarStorageMonitoringService);
-        allServices.add(mCarConfigurationService);
-        allServices.add(mVmsSubscriberService);
-        allServices.add(mVmsPublisherService);
-
-        if (mUserManagerHelper.isHeadlessSystemUser()) {
-            mCarUserService = new CarUserService(serviceContext, mUserManagerHelper);
-            allServices.add(mCarUserService);
-        }
-
-        mAllServices = allServices.toArray(new CarServiceBase[allServices.size()]);
+        // Registry owns service construction + stable ordering; ICarImpl retains binder surface
+        // and getCarService() dispatch/permission behavior.
+        mServiceRegistry = new ICarImplServiceRegistry(serviceContext, mHal, systemInterface, this);
     }
 
     @MainThread
     void init() {
         traceBegin("VehicleHal.init");
-        mHal.init();
+        mServiceRegistry.initVehicleHal();
         traceEnd();
         traceBegin("CarService.initAllServices");
-        for (CarServiceBase service : mAllServices) {
-            service.init();
-        }
+        mServiceRegistry.initAllServices();
         traceEnd();
     }
 
     void release() {
         // release done in opposite order from init
-        for (int i = mAllServices.length - 1; i >= 0; i--) {
-            mAllServices[i].release();
-        }
-        mHal.release();
+        mServiceRegistry.releaseAllServicesReverseOrder();
+        mServiceRegistry.releaseVehicleHal();
     }
 
     void vehicleHalReconnected(IVehicle vehicle) {
-        mHal.vehicleHalReconnected(vehicle);
-        for (CarServiceBase service : mAllServices) {
-            service.vehicleHalReconnected();
-        }
+        mServiceRegistry.vehicleHalReconnected(vehicle);
     }
 
     @Override
@@ -219,38 +121,38 @@ public class ICarImpl extends ICar.Stub {
     public IBinder getCarService(String serviceName) {
         switch (serviceName) {
             case Car.AUDIO_SERVICE:
-                return mCarAudioService;
+                return mServiceRegistry.getCarAudioService();
             case Car.APP_FOCUS_SERVICE:
-                return mAppFocusService;
+                return mServiceRegistry.getAppFocusService();
             case Car.PACKAGE_SERVICE:
-                return mCarPackageManagerService;
+                return mServiceRegistry.getCarPackageManagerService();
             case Car.DIAGNOSTIC_SERVICE:
                 assertAnyDiagnosticPermission(mContext);
-                return mCarDiagnosticService;
+                return mServiceRegistry.getCarDiagnosticService();
             case Car.POWER_SERVICE:
                 assertPowerPermission(mContext);
-                return mCarPowerManagementService;
+                return mServiceRegistry.getCarPowerManagementService();
             case Car.CABIN_SERVICE:
             case Car.HVAC_SERVICE:
             case Car.INFO_SERVICE:
             case Car.PROPERTY_SERVICE:
             case Car.SENSOR_SERVICE:
             case Car.VENDOR_EXTENSION_SERVICE:
-                return mCarPropertyService;
+                return mServiceRegistry.getCarPropertyService();
             case Car.CAR_NAVIGATION_SERVICE:
                 assertNavigationManagerPermission(mContext);
                 IInstrumentClusterNavigation navService =
-                        mInstrumentClusterService.getNavigationService();
+                        mServiceRegistry.getInstrumentClusterService().getNavigationService();
                 return navService == null ? null : navService.asBinder();
             case Car.CAR_INSTRUMENT_CLUSTER_SERVICE:
                 assertClusterManagerPermission(mContext);
-                return mInstrumentClusterService.getManagerService();
+                return mServiceRegistry.getInstrumentClusterService().getManagerService();
             case Car.PROJECTION_SERVICE:
                 assertProjectionPermission(mContext);
-                return mCarProjectionService;
+                return mServiceRegistry.getCarProjectionService();
             case Car.VMS_SUBSCRIBER_SERVICE:
                 assertVmsSubscriberPermission(mContext);
-                return mVmsSubscriberService;
+                return mServiceRegistry.getVmsSubscriberService();
             case Car.TEST_SERVICE: {
                 assertPermission(mContext, Car.PERMISSION_CAR_TEST_SERVICE);
                 synchronized (this) {
@@ -261,17 +163,17 @@ public class ICarImpl extends ICar.Stub {
                 }
             }
             case Car.BLUETOOTH_SERVICE:
-                return mCarBluetoothService;
+                return mServiceRegistry.getCarBluetoothService();
             case Car.STORAGE_MONITORING_SERVICE:
                 assertPermission(mContext, Car.PERMISSION_STORAGE_MONITORING);
-                return mCarStorageMonitoringService;
+                return mServiceRegistry.getCarStorageMonitoringService();
             case Car.CAR_DRIVING_STATE_SERVICE:
                 assertDrivingStatePermission(mContext);
-                return mCarDrivingStateService;
+                return mServiceRegistry.getCarDrivingStateService();
             case Car.CAR_UX_RESTRICTION_SERVICE:
-                return mCarUXRestrictionsService;
+                return mServiceRegistry.getCarUXRestrictionsService();
             case Car.CAR_CONFIGURATION_SERVICE:
-                return mCarConfigurationService;
+                return mServiceRegistry.getCarConfigurationService();
             default:
                 Log.w(CarLog.TAG_SERVICE, "getCarService for unknown service:" + serviceName);
                 return null;
@@ -286,9 +188,9 @@ public class ICarImpl extends ICar.Stub {
     public CarServiceBase getCarInternalService(String serviceName) {
         switch (serviceName) {
             case INTERNAL_INPUT_SERVICE:
-                return mCarInputService;
+                return mServiceRegistry.getCarInputService();
             case INTERNAL_SYSTEM_ACTIVITY_MONITORING_SERVICE:
-                return mSystemActivityMonitoringService;
+                return mServiceRegistry.getSystemActivityMonitoringService();
             default:
                 Log.w(CarLog.TAG_SERVICE, "getCarInternalService for unknown service:" +
                         serviceName);
@@ -376,7 +278,7 @@ public class ICarImpl extends ICar.Stub {
 
             writer.println("*FutureConfig, DEFAULT:" + FeatureConfiguration.DEFAULT);
             writer.println("*Dump all services*");
-            for (CarServiceBase service : mAllServices) {
+            for (CarServiceBase service : mServiceRegistry.getAllServices()) {
                 dumpService(service, writer);
             }
             if (mCarTestService != null) {
@@ -456,18 +358,22 @@ public class ICarImpl extends ICar.Stub {
         }
 
         public void exec(String[] args, PrintWriter writer) {
+            if (args == null || args.length == 0) {
+                dumpHelp(writer);
+                return;
+            }
             String arg = args[0];
             switch (arg) {
                 case COMMAND_HELP:
                     dumpHelp(writer);
                     break;
                 case COMMAND_DAY_NIGHT_MODE: {
-                    String value = args.length < 1 ? "" : args[1];
+                    String value = args.length < 2 ? "" : args[1];
                     forceDayNightMode(value, writer);
                     break;
                 }
                 case COMMAND_GARAGE_MODE: {
-                    String value = args.length < 1 ? "" : args[1];
+                    String value = args.length < 2 ? "" : args[1];
                     forceGarageMode(value, writer);
                     break;
                 }
@@ -495,8 +401,10 @@ public class ICarImpl extends ICar.Stub {
                         break;
                     }
                     boolean enableBlocking = Boolean.valueOf(args[1]);
-                    if (mCarPackageManagerService != null) {
-                        mCarPackageManagerService.setEnableActivityBlocking(enableBlocking);
+                    CarPackageManagerService carPackageManagerService =
+                            mServiceRegistry.getCarPackageManagerService();
+                    if (carPackageManagerService != null) {
+                        carPackageManagerService.setEnableActivityBlocking(enableBlocking);
                     }
                     break;
                 case COMMAND_GET_DO_ACTIVITIES:
@@ -506,9 +414,11 @@ public class ICarImpl extends ICar.Stub {
                         break;
                     }
                     String pkgName = args[1].toLowerCase();
-                    if (mCarPackageManagerService != null) {
+                    CarPackageManagerService carPackageManagerServiceForDo =
+                            mServiceRegistry.getCarPackageManagerService();
+                    if (carPackageManagerServiceForDo != null) {
                         String[] doActivities =
-                                mCarPackageManagerService.getDistractionOptimizedActivities(
+                                carPackageManagerServiceForDo.getDistractionOptimizedActivities(
                                         pkgName);
                         if (doActivities != null) {
                             writer.println("DO Activities for " + pkgName);
@@ -543,7 +453,8 @@ public class ICarImpl extends ICar.Stub {
                             + PARAM_NIGHT_MODE + "|" + PARAM_SENSOR_MODE);
                     return;
             }
-            int current = mCarNightService.forceDayNightMode(mode);
+
+            int current = mServiceRegistry.getCarNightService().forceDayNightMode(mode);
             String currentMode = null;
             switch (current) {
                 case UiModeManager.MODE_NIGHT_AUTO:
@@ -562,10 +473,13 @@ public class ICarImpl extends ICar.Stub {
         private void forceGarageMode(String arg, PrintWriter writer) {
             switch (arg) {
                 case PARAM_ON_MODE:
-                    mGarageModeService.onPrepareShutdown(false);
+                    // Preserve prior behavior: entering garage mode is implemented by preparing
+                    // shutdown without actually shutting down.
+                    mServiceRegistry.getGarageModeService().onPrepareShutdown(false);
                     break;
                 case PARAM_OFF_MODE:
-                    mGarageModeService.onSleepEntry();
+                    // Preserve prior behavior: leaving garage mode is mapped to sleep-entry path.
+                    mServiceRegistry.getGarageModeService().onSleepEntry();
                     break;
                 case PARAM_QUERY_MODE:
                     // Nothing to do. Always query at the end anyway.
@@ -575,7 +489,7 @@ public class ICarImpl extends ICar.Stub {
                             + PARAM_OFF_MODE + "|" + PARAM_QUERY_MODE);
                     return;
             }
-            writer.println("Garage mode: " + mGarageModeService.isInGarageMode());
+            writer.println("Garage mode: " + mServiceRegistry.getGarageModeService().isInGarageMode());
         }
 
         /**
