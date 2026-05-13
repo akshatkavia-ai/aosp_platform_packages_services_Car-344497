@@ -5,3 +5,8 @@
 gen/
 *.pyc
 __pycache__
+.file_activity_report.json
+.env
+.knowledge.kavia
+service_module_javac_check.log
+service_python_compileall.log

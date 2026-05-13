@@ -34,6 +34,8 @@ import com.android.car.test.utils.TemporaryDirectory;
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
@@ -214,6 +216,44 @@ public class CarPowerManagementServiceTest extends AndroidTestCase {
         assertFalse(mDisplayInterface.getDisplayState());
     }
 
+    public void testSleepCallbacks_multiListenerOrderingPreserved() throws Exception {
+        final int wakeupTime = 100;
+        initTest(0 /*processingTimeMs*/, wakeupTime);
+        assertTrue(mDisplayInterface.waitForDisplayStateChange(WAIT_TIMEOUT_MS));
+
+        // The refactor extracted service-listener fanout into PowerListenerRegistry; ensure
+        // registration ordering is preserved for sleep entry/exit callbacks.
+        BlockingQueue<String> events = new LinkedBlockingQueue<>();
+        RecordingServiceListener l1 = new RecordingServiceListener("l1", events);
+        RecordingServiceListener l2 = new RecordingServiceListener("l2", events);
+        mService.registerPowerEventListener(l1);
+        mService.registerPowerEventListener(l2);
+
+        mPowerHal.setCurrentPowerState(new PowerState(PowerHalService.STATE_SHUTDOWN_PREPARE,
+                PowerHalService.SHUTDOWN_CAN_SLEEP));
+        assertFalse(mDisplayInterface.waitForDisplayStateChange(WAIT_TIMEOUT_MS));
+
+        // onSleepEntry must be delivered in registration order.
+        assertEquals("l1:entry", pollEvent(events));
+        assertEquals("l2:entry", pollEvent(events));
+
+        // VHAL ordering: sleep entry report should happen after onSleepEntry.
+        assertStateReceived(PowerHalService.SET_DEEP_SLEEP_ENTRY, 0);
+
+        // Ensure the post-sleep state differs, so the service doesn't immediately fall through to
+        // shutdown due to "no power state change" in this mocked environment.
+        mPowerHal.setCurrentPowerState(new PowerState(PowerHalService.STATE_ON_DISP_OFF, 0), false);
+
+        int wakeupTimeReceived = mSystemStateInterface.waitForSleepEntryAndWakeup(WAIT_TIMEOUT_MS);
+        assertEquals(wakeupTime, wakeupTimeReceived);
+
+        assertStateReceived(PowerHalService.SET_DEEP_SLEEP_EXIT, 0);
+
+        // onSleepExit must be delivered in registration order as well.
+        assertEquals("l1:exit", pollEvent(events));
+        assertEquals("l2:exit", pollEvent(events));
+    }
+
     private void assertStateReceived(int expectedState, int expectedParam) throws Exception {
         int[] state = mPowerHal.waitForSend(WAIT_TIMEOUT_MS);
         assertEquals(expectedState, state[0]);
@@ -239,6 +279,12 @@ public class CarPowerManagementServiceTest extends AndroidTestCase {
         if (!semaphore.tryAcquire(timeoutMs, TimeUnit.MILLISECONDS)) {
             throw new IllegalStateException("timeout");
         }
+    }
+
+    private String pollEvent(BlockingQueue<String> events) throws Exception {
+        String event = events.poll(WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        assertNotNull("Timed out waiting for callback event", event);
+        return event;
     }
 
     private static final class MockDisplayInterface implements DisplayInterface {
@@ -432,6 +478,31 @@ public class CarPowerManagementServiceTest extends AndroidTestCase {
         @Override
         public int getWakeupTime() {
             return mWakeupTime;
+        }
+    }
+
+    private static final class RecordingServiceListener implements PowerServiceEventListener {
+        private final String mName;
+        private final BlockingQueue<String> mEvents;
+
+        private RecordingServiceListener(String name, BlockingQueue<String> events) {
+            mName = name;
+            mEvents = events;
+        }
+
+        @Override
+        public void onShutdown() {
+            mEvents.offer(mName + ":shutdown");
+        }
+
+        @Override
+        public void onSleepEntry() {
+            mEvents.offer(mName + ":entry");
+        }
+
+        @Override
+        public void onSleepExit() {
+            mEvents.offer(mName + ":exit");
         }
     }
 }
