@@ -1,0 +1,10 @@
+10:23:41.437 INFO  Scanner configuration file: /home/kavia/workspace/code-generation/aosp_platform_packages_services_Car-344497/sonar-scanner-7.1.0.4889-linux-x64/conf/sonar-scanner.properties
+10:23:41.441 INFO  Project root configuration file: /home/kavia/workspace/code-generation/aosp_platform_packages_services_Car-344497/sonar-project.properties
+10:23:41.457 INFO  SonarScanner CLI 7.1.0.4889
+10:23:41.459 INFO  Java 17.0.13 Eclipse Adoptium (64-bit)
+10:23:41.459 INFO  Linux 5.10.230-223.885.amzn2.x86_64 amd64
+10:23:41.493 INFO  User cache: /home/kavia/.sonar/cache
+10:23:42.299 INFO  Communicating with SonarQube Cloud
+10:23:42.300 INFO  JRE provisioning: os[linux], arch[x86_64]
+10:23:42.717 INFO  EXECUTION FAILURE
+10:23:42.719 INFO  Total time: 1.285s

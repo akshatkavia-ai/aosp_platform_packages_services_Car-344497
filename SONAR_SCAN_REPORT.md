@@ -1,32 +1,48 @@
-# SonarQube / SonarScanner Scan Report (aosp_platform_packages_services_Car-344497)
+# SonarCloud Scan Report — aosp_platform_packages_services_Car-344497
 
 ## Executive status
-- SonarScanner **configuration file exists**: `sonar-project.properties`
-- SonarScanner CLI **is available** (downloaded locally as needed)
-- A **complete scan was re-run** against SonarCloud, but **analysis could not start due to authentication / authorization failure**
-- Result: **No findings were produced**, therefore **no findings can be categorized by severity, CWE, or module** yet
+- SonarScanner CLI: **Available** (`sonar-scanner-7.1.0.4889-linux-x64`)
+- Scan re-run: **Attempted**
+- Result: **FAILED (blocking authentication/authorization error)**
+- Findings report (severity / CWE / module): **Not available** (scan did not reach analysis/upload)
 
 ---
 
-## What was run (re-run attempt)
+## What was executed (re-run)
+Workspace: `aosp_platform_packages_services_Car-344497`
 
-From repo root, the scan was invoked (representative command):
-
+Command executed (effective):
 ```bash
-SONAR_HOST_URL=https://sonarcloud.io
-sonar-scanner \
-  -Dsonar.host.url="$SONAR_HOST_URL" \
-  -Dsonar.token="$SONAR_TOKEN" \
-  -Dsonar.scanner.skipJreProvisioning=true \
-  -Dsonar.verbose=true
+./sonar-scanner-7.1.0.4889-linux-x64/bin/sonar-scanner \
+  -Dsonar.host.url=https://sonarcloud.io \
+  -Dsonar.login=${SONAR_TOKEN:-}
 ```
 
-Important notes:
-- In this execution environment, `SONAR_TOKEN` was **empty / not injected**, so the scanner attempted API calls without valid credentials.
+Scanner output was captured to:
+- `sonar-scan.log`
 
 ---
 
-## Current Sonar configuration (repo)
+## Blocking error details (verbatim evidence)
+From `sonar-scan.log`:
+
+```text
+10:23:42.299 INFO  Communicating with SonarQube Cloud
+10:23:42.300 INFO  JRE provisioning: os[linux], arch[x86_64]
+10:23:42.717 ERROR Failed to query JRE metadata: GET https://api.sonarcloud.io/analysis/jres?os=linux&arch=x86_64 failed with HTTP 403. Please check the property sonar.token or the environment variable SONAR_TOKEN.
+10:23:42.717 INFO  EXECUTION FAILURE
+```
+
+### Interpretation (grounded in the scanner message)
+- SonarCloud returned **HTTP 403** while the scanner attempted **JRE provisioning metadata**.
+- The scanner explicitly indicates the remedy is to check:
+  - `sonar.token` property, or
+  - `SONAR_TOKEN` environment variable
+- Because the scan fails at this early stage, **no analysis is created**, and therefore **no issues/findings exist to export/categorize**.
+
+---
+
+## Current repo Sonar configuration (as-is)
 File: `sonar-project.properties`
 
 ```properties
@@ -49,120 +65,47 @@ sonar.cpp.file.suffixes=-
 sonar.exclusions=**/out/**,**/.repo/**,**/generated/**,**/*.aidl
 ```
 
-Scope caveat:
-- Despite the user request for a “complete scan on the current codebase”, the current configuration scans only:
-  - `service/src/com/android/car`
-- To scan the whole monorepo, `sonar.sources` must be expanded (see “How to proceed”).
+### Scope caveat vs “complete scan”
+- The configuration currently scans only: `service/src/com/android/car`
+- A truly “complete scan of the current codebase” would require expanding `sonar.sources` (and likely adding targeted exclusions to keep analysis practical).
 
 ---
 
-## Outcome of the re-run (evidence)
+## Why the requested categorized findings report is blocked
+The user request was to categorize all Sonar findings by:
+- Severity
+- CWE
+- Impacted module
 
-### Observed errors (authentication / authorization)
-During scanner startup, multiple SonarCloud API calls returned **HTTP 401 Unauthorized**, leading to an inability to create an analysis.
-
-Key evidence observed in scanner output (representative excerpts):
-
-- Feature flags / provisioning calls failing with 401
-- Analysis creation calls failing with 401
-- Terminal error indicating the project cannot be accessed/created with current credentials:
-
-> “Project not found. Please check the 'sonar.projectKey' and 'sonar.organization' properties, the 'SONAR_TOKEN' environment variable, or contact the project administrator to check the permissions of the user the token belongs to”
-
-Root cause (based on the run):
-- `SONAR_TOKEN` was **not set / not available** to the scanner process, so SonarCloud rejected requests.
-- Without a valid token, the scanner cannot create an analysis, therefore it cannot upload results and SonarCloud cannot compute issues.
-
-### Local artifacts
-- A `.scannerwork/` directory was created, but it contained **no usable analysis outputs** (empty), consistent with failing before analysis could be created server-side.
+This is blocked because:
+- The scan did not authenticate/authorize successfully (HTTP 403 during startup provisioning).
+- Therefore SonarCloud did not compute/store issues for this run.
+- With no issues available server-side, there is nothing to export and categorize.
 
 ---
 
-## Requested deliverable: categorized findings report (blocked)
+## Next steps to unblock (actionable)
+1) Ensure a valid token is available to the scanner at runtime:
+   - Set environment variable:
+     - `SONAR_TOKEN=<token>`
+   - Or pass explicitly:
+     - `-Dsonar.token=<token>` (preferred) instead of `sonar.login`
 
-The request was to:
+2) Re-run the scan and confirm it reaches the “ANALYSIS SUCCESSFUL” stage and publishes to SonarCloud.
 
-> “generate a report categorizing all findings by severity, CWE, and impacted module.”
-
-This cannot be completed until **a successful scan** exists in SonarCloud/SonarQube, because:
-- Findings (issues/vulnerabilities/hotspots) are computed and stored server-side
-- The current run did not authenticate, so there is no analysis to query via UI or API
-
----
-
-## How to proceed (to enable a complete scan + report generation)
-
-### 1) Ensure credentials are actually present at runtime
-One of the following must be true at scan execution time:
-
-- Environment variable:
-  - `SONAR_TOKEN=<real token with Execute Analysis permission>`
-- Or pass explicitly:
-  - `sonar-scanner -Dsonar.token="<token>" ...`
-
-Also ensure host is correct:
-- `SONAR_HOST_URL=https://sonarcloud.io`
-
-### 2) Validate project identity and permissions
-Verify in SonarCloud:
-- Organization: `akshatkavia-ai`
-- Project key: `akshatkavia-ai_aosp_platform_packages_services_Car-344497`
-- The token’s user has permission to:
-  - browse the project
-  - execute analysis on the project
-  - create the project (if project auto-provisioning is expected)
-
-### 3) Expand scan scope to cover the whole repo (if truly required)
-Update `sonar.sources` to include additional modules, for example:
-
-- `car-lib/src`
-- `car-support-lib/src`
-- `service/src`
-- `obd2-lib/src`
-- `tools/**`
-- `tests/**`
-- `procfs-inspector/**`
-- etc.
-
-Also consider exclusions to keep the scan manageable.
-
-### 4) (Recommended) Provide real Java bytecode for best Java rule accuracy
-Current config uses:
-- `sonar.java.binaries=.` (workaround)
-
-For accurate results, a build step that generates class files should precede the scan, and `sonar.java.binaries` should point to those outputs.
-
----
-
-## Plan once a scan succeeds (how the report will be generated)
-
-After a successful scan, export issues and categorize them:
-
-1) Pull issues via Sonar API:
-- `GET /api/issues/search?componentKeys=<projectKey>&ps=500&p=1`
-- Group by:
-  - `severity` (BLOCKER/CRITICAL/MAJOR/MINOR/INFO)
-  - impacted module (derive from file path prefix, e.g. `service/`, `car-lib/`, `tests/`, `tools/`)
-
-2) Map rules to CWE:
-- For each issue’s `rule` key:
-  - `GET /api/rules/show?key=<ruleKey>`
-- Extract CWE references from rule metadata (when present)
-- Group findings by CWE, and also keep “CWE: Unknown/Not provided” bucket when CWE is absent
-
-3) Write report sections:
-- Summary counts by severity
-- Summary counts by CWE
-- Summary counts by module
-- Detailed tables (severity → module → issue list; CWE → issue list)
+3) After a successful scan, export issues and categorize them:
+   - Use SonarCloud Web API:
+     - `/api/issues/search` to retrieve issues (severity, component/file)
+     - `/api/rules/show` to retrieve rule metadata and map rules to CWE (when available)
+   - Map “impacted module” by top-level path prefix (e.g., `service/`, `car-lib/`, `car-support-lib/`, `tests/`, `tools/`, etc.)
 
 ---
 
 ## Instructions for future agent
-1. Ensure `SONAR_TOKEN` is **actually available** in the scan execution environment (not just configured in a separate service config).
-2. Re-run `sonar-scanner` and confirm the analysis appears in SonarCloud for project `akshatkavia-ai_aosp_platform_packages_services_Car-344497`.
-3. Use SonarCloud Web API (`/api/issues/search` and `/api/rules/show`) to export all issues.
-4. Generate the final report categorizing findings by:
-   - Severity
-   - CWE
-   - Impacted module (path prefix mapping)
+- Re-run scanner only after verifying `SONAR_TOKEN` is present and has “Execute Analysis” permission for:
+  - `sonar.organization=akshatkavia-ai`
+  - `sonar.projectKey=akshatkavia-ai_aosp_platform_packages_services_Car-344497`
+- Once scan succeeds, generate the requested report by exporting issues and grouping by:
+  - Severity
+  - CWE (from rule metadata; include “CWE: Not provided” bucket)
+  - Impacted module (derive from file path prefixes)
