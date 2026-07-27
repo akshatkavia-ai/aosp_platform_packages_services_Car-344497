@@ -95,6 +95,8 @@ public class CarService extends Service {
                 mCanBusErrorNotifier,
                 mVehicleInterfaceName);
         mICarImpl.init();
+        // Expose a simple, lightweight signal for other system components / tests that
+        // CarService finished initialization (used as a readiness marker during boot).
         SystemProperties.set("boot.car_service_created", "1");
 
         linkToDeath(mVehicle, mVehicleDeathRecipient);
@@ -201,7 +203,7 @@ public class CarService extends Service {
 
             linkToDeath(mVehicle, this);
 
-            Log.i(CarLog.TAG_SERVICE, "Notifying car service Vehicle HAL reconnected...");
+            Log.i(CarLog.TAG_SERVICE, "Notifying car service that Vehicle HAL reconnected...");
             mICarImpl.vehicleHalReconnected(mVehicle);
         }
     }
